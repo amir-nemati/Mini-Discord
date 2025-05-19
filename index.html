@@ -16,6 +16,21 @@
       flex-direction: column;
       height: 100vh;
     }
+    #room-select {
+      padding: 10px;
+      background: #23272a;
+      display: flex;
+      gap: 10px;
+      border-bottom: 1px solid #444;
+    }
+    #room-select button {
+      background-color: #7289da;
+      border: none;
+      color: white;
+      padding: 5px 10px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
     #messages {
       flex: 1;
       padding: 10px;
@@ -24,10 +39,19 @@
     }
     .message {
       margin: 5px 0;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background-color: #40444b;
+      max-width: 60%;
+    }
+    .message span.username {
+      color: #7289da;
+      font-weight: bold;
     }
     .system-message {
       color: #999;
       font-style: italic;
+      background: none;
     }
     #input-container {
       display: flex;
@@ -51,6 +75,12 @@
       padding: 10px;
       font-size: 16px;
     }
+    #typing-indicator {
+      padding: 5px 10px;
+      color: #aaa;
+      font-style: italic;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -59,7 +89,13 @@
   </div>
 
   <div id="chat-container" style="display: none">
+    <div id="room-select">
+      <button onclick="switchRoom('general')">#general</button>
+      <button onclick="switchRoom('games')">#games</button>
+      <button onclick="switchRoom('random')">#random</button>
+    </div>
     <div id="messages"></div>
+    <div id="typing-indicator"></div>
     <div id="input-container">
       <input type="text" id="messageInput" placeholder="Type a message...">
       <button id="sendButton">Send</button>
@@ -68,7 +104,15 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-    import { getDatabase, ref, push, onChildAdded, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+    import {
+      getDatabase,
+      ref,
+      push,
+      onChildAdded,
+      set,
+      onValue,
+      remove
+    } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAjpfCMAntF0iA7LzbJPpbSlX3M43YokQQ",
@@ -82,7 +126,10 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const messagesRef = ref(db, "messages");
+
+    let currentRoom = "general";
+    let username = "";
+    const typingRef = ref(db, `typing`);
 
     const usernamePrompt = document.getElementById("usernamePrompt");
     const usernameInput = document.getElementById("usernameInput");
@@ -90,12 +137,32 @@
     const messages = document.getElementById("messages");
     const messageInput = document.getElementById("messageInput");
     const sendButton = document.getElementById("sendButton");
-
-    let username = "";
+    const typingIndicator = document.getElementById("typing-indicator");
 
     function formatTime(ts) {
       const date = new Date(ts);
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function switchRoom(room) {
+      currentRoom = room;
+      messages.innerHTML = "";
+      loadMessages();
+    }
+
+    function loadMessages() {
+      const roomRef = ref(db, `rooms/${currentRoom}`);
+      onChildAdded(roomRef, (snapshot) => {
+        const msg = snapshot.val();
+        const msgElem = document.createElement("div");
+        const time = msg.timestamp ? formatTime(msg.timestamp) : "";
+        msgElem.className = msg.system ? "message system-message" : "message";
+        msgElem.innerHTML = msg.system
+          ? `[${time}] ${msg.text}`
+          : `<span class="username">${msg.name}</span> <small>[${time}]</small><br>${msg.text}`;
+        messages.appendChild(msgElem);
+        messages.scrollTop = messages.scrollHeight;
+      });
     }
 
     usernameInput.addEventListener("keypress", (e) => {
@@ -104,36 +171,42 @@
         usernamePrompt.style.display = "none";
         chatContainer.style.display = "flex";
 
-        push(messagesRef, {
+        const joinRef = ref(db, `rooms/${currentRoom}`);
+        push(joinRef, {
           system: true,
           text: `${username} joined the chat.`,
           timestamp: Date.now()
         });
+
+        loadMessages();
       }
+    });
+
+    messageInput.addEventListener("input", () => {
+      const thisUserTypingRef = ref(db, `typing/${username}`);
+      set(thisUserTypingRef, true);
+      setTimeout(() => remove(thisUserTypingRef), 2000);
+    });
+
+    onValue(typingRef, (snapshot) => {
+      const typingUsers = snapshot.val();
+      const othersTyping = Object.keys(typingUsers || {}).filter(name => name !== username);
+      typingIndicator.textContent = othersTyping.length
+        ? `${othersTyping.join(", ")} is typing...`
+        : "";
     });
 
     sendButton.addEventListener("click", () => {
       const text = messageInput.value.trim();
       if (text !== "") {
-        push(messagesRef, {
+        const roomRef = ref(db, `rooms/${currentRoom}`);
+        push(roomRef, {
           name: username,
           text: text,
           timestamp: Date.now()
         });
         messageInput.value = "";
       }
-    });
-
-    onChildAdded(messagesRef, (snapshot) => {
-      const msg = snapshot.val();
-      const msgElem = document.createElement("div");
-      const time = msg.timestamp ? formatTime(msg.timestamp) : "";
-      msgElem.className = msg.system ? "message system-message" : "message";
-      msgElem.textContent = msg.system
-        ? `[${time}] ${msg.text}`
-        : `[${time}] ${msg.name}: ${msg.text}`;
-      messages.appendChild(msgElem);
-      messages.scrollTop = messages.scrollHeight;
     });
   </script>
 </body>
