@@ -81,6 +81,19 @@
       font-style: italic;
       font-size: 14px;
     }
+    #user-list {
+      padding: 10px;
+      background-color: #23272a;
+      border-left: 1px solid #444;
+      min-width: 150px;
+    }
+    #user-list h4 {
+      margin-top: 0;
+    }
+    #main-content {
+      display: flex;
+      flex: 1;
+    }
   </style>
 </head>
 <body>
@@ -94,11 +107,19 @@
       <button onclick="switchRoom('games')">#games</button>
       <button onclick="switchRoom('random')">#random</button>
     </div>
-    <div id="messages"></div>
-    <div id="typing-indicator"></div>
-    <div id="input-container">
-      <input type="text" id="messageInput" placeholder="Type a message...">
-      <button id="sendButton">Send</button>
+    <div id="main-content">
+      <div style="flex: 1; display: flex; flex-direction: column">
+        <div id="messages"></div>
+        <div id="typing-indicator"></div>
+        <div id="input-container">
+          <input type="text" id="messageInput" placeholder="Type a message...">
+          <button id="sendButton">Send</button>
+        </div>
+      </div>
+      <div id="user-list">
+        <h4>Online Users</h4>
+        <ul id="userList"></ul>
+      </div>
     </div>
   </div>
 
@@ -111,7 +132,9 @@
       onChildAdded,
       set,
       onValue,
-      remove
+      remove,
+      onDisconnect,
+      off
     } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
 
     const firebaseConfig = {
@@ -129,8 +152,8 @@
 
     let currentRoom = "general";
     let username = "";
+    let currentListenerRef = null;
     const typingRef = ref(db, `typing`);
-
     const usernamePrompt = document.getElementById("usernamePrompt");
     const usernameInput = document.getElementById("usernameInput");
     const chatContainer = document.getElementById("chat-container");
@@ -138,20 +161,36 @@
     const messageInput = document.getElementById("messageInput");
     const sendButton = document.getElementById("sendButton");
     const typingIndicator = document.getElementById("typing-indicator");
+    const userList = document.getElementById("userList");
 
     function formatTime(ts) {
       const date = new Date(ts);
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
+    function updateUserList(room) {
+      const usersRef = ref(db, `online/${room}`);
+      onValue(usersRef, snapshot => {
+        const users = snapshot.val() || {};
+        userList.innerHTML = Object.keys(users).map(name => `<li>${name}</li>`).join("");
+      });
+    }
+
     function switchRoom(room) {
+      const oldRoomRef = ref(db, `online/${currentRoom}/${username}`);
+      remove(oldRoomRef);
       currentRoom = room;
       messages.innerHTML = "";
       loadMessages();
+      set(ref(db, `online/${currentRoom}/${username}`), true);
+      onDisconnect(ref(db, `online/${currentRoom}/${username}`)).remove();
+      updateUserList(currentRoom);
     }
 
     function loadMessages() {
+      if (currentListenerRef) off(currentListenerRef);
       const roomRef = ref(db, `rooms/${currentRoom}`);
+      currentListenerRef = roomRef;
       onChildAdded(roomRef, (snapshot) => {
         const msg = snapshot.val();
         const msgElem = document.createElement("div");
@@ -178,7 +217,11 @@
           timestamp: Date.now()
         });
 
+        set(ref(db, `online/${currentRoom}/${username}`), true);
+        onDisconnect(ref(db, `online/${currentRoom}/${username}`)).remove();
+
         loadMessages();
+        updateUserList(currentRoom);
       }
     });
 
