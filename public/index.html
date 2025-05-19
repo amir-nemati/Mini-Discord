@@ -43,10 +43,26 @@
       border-radius: 8px;
       background-color: #40444b;
       max-width: 60%;
+      position: relative;
     }
     .message span.username {
       color: #7289da;
       font-weight: bold;
+    }
+    .message .time {
+      font-size: 10px;
+      color: #bbb;
+      margin-left: 10px;
+    }
+    .message .actions {
+      position: absolute;
+      top: 4px;
+      right: 8px;
+      display: flex;
+      gap: 5px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #ccc;
     }
     .system-message {
       color: #999;
@@ -103,9 +119,9 @@
 
   <div id="chat-container" style="display: none">
     <div id="room-select">
-      <button onclick="switchRoom('general')">#general</button>
-      <button onclick="switchRoom('games')">#games</button>
-      <button onclick="switchRoom('random')">#random</button>
+      <button id="room-general" onclick="switchRoom('general')">#general</button>
+      <button id="room-games" onclick="switchRoom('games')">#games</button>
+      <button id="room-random" onclick="switchRoom('random')">#random</button>
     </div>
     <div id="main-content">
       <div style="flex: 1; display: flex; flex-direction: column">
@@ -153,7 +169,7 @@
     let currentRoom = "general";
     let username = "";
     let currentListenerRef = null;
-    const typingRef = ref(db, `typing`);
+    let typingRef = ref(db, `typing/${currentRoom}`);
     const usernamePrompt = document.getElementById("usernamePrompt");
     const usernameInput = document.getElementById("usernameInput");
     const chatContainer = document.getElementById("chat-container");
@@ -176,15 +192,43 @@
       });
     }
 
+    function updateRoomUserCounts() {
+      const rooms = ['general', 'games', 'random'];
+      rooms.forEach(room => {
+        const roomRef = ref(db, `online/${room}`);
+        onValue(roomRef, snapshot => {
+          const users = snapshot.val() || {};
+          const count = Object.keys(users).length;
+          const button = document.getElementById(`room-${room}`);
+          if (button) {
+            button.textContent = `#${room} (${count})`;
+          }
+        });
+      });
+    }
+
     function switchRoom(room) {
       const oldRoomRef = ref(db, `online/${currentRoom}/${username}`);
       remove(oldRoomRef);
+      off(typingRef);
       currentRoom = room;
+      typingRef = ref(db, `typing/${currentRoom}`);
+
       messages.innerHTML = "";
       loadMessages();
+
       set(ref(db, `online/${currentRoom}/${username}`), true);
       onDisconnect(ref(db, `online/${currentRoom}/${username}`)).remove();
       updateUserList(currentRoom);
+      updateRoomUserCounts();
+
+      onValue(typingRef, (snapshot) => {
+        const typingUsers = snapshot.val() || {};
+        const othersTyping = Object.keys(typingUsers).filter(name => name !== username);
+        typingIndicator.textContent = othersTyping.length
+          ? `${othersTyping.join(", ")} is typing...`
+          : "";
+      });
     }
 
     function loadMessages() {
@@ -194,11 +238,21 @@
       onChildAdded(roomRef, (snapshot) => {
         const msg = snapshot.val();
         const msgElem = document.createElement("div");
-        const time = msg.timestamp ? formatTime(msg.timestamp) : "";
         msgElem.className = msg.system ? "message system-message" : "message";
-        msgElem.innerHTML = msg.system
-          ? `[${time}] ${msg.text}`
-          : `<span class="username">${msg.name}</span> <small>[${time}]</small><br>${msg.text}`;
+
+        if (msg.system) {
+          msgElem.textContent = `[${formatTime(msg.timestamp)}] ${msg.text}`;
+        } else {
+          msgElem.innerHTML = `
+            <span class="username">${msg.name}</span>
+            <span class="time">[${formatTime(msg.timestamp)}]</span><br>
+            ${msg.text}
+            <div class="actions">
+              <span onclick="alert('Edit feature coming soon')">✏️</span>
+              <span onclick="alert('Report feature coming soon')">🚩</span>
+            </div>`;
+        }
+
         messages.appendChild(msgElem);
         messages.scrollTop = messages.scrollHeight;
       });
@@ -222,21 +276,22 @@
 
         loadMessages();
         updateUserList(currentRoom);
+        updateRoomUserCounts();
+
+        onValue(typingRef, (snapshot) => {
+          const typingUsers = snapshot.val();
+          const othersTyping = Object.keys(typingUsers || {}).filter(name => name !== username);
+          typingIndicator.textContent = othersTyping.length
+            ? `${othersTyping.join(", ")} is typing...`
+            : "";
+        });
       }
     });
 
     messageInput.addEventListener("input", () => {
-      const thisUserTypingRef = ref(db, `typing/${username}`);
+      const thisUserTypingRef = ref(db, `typing/${currentRoom}/${username}`);
       set(thisUserTypingRef, true);
       setTimeout(() => remove(thisUserTypingRef), 2000);
-    });
-
-    onValue(typingRef, (snapshot) => {
-      const typingUsers = snapshot.val();
-      const othersTyping = Object.keys(typingUsers || {}).filter(name => name !== username);
-      typingIndicator.textContent = othersTyping.length
-        ? `${othersTyping.join(", ")} is typing...`
-        : "";
     });
 
     sendButton.addEventListener("click", () => {
