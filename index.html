@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MyCord - Chat</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #2c2f33;
+      color: white;
+    }
+    #chat-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    #messages {
+      flex: 1;
+      padding: 10px;
+      overflow-y: scroll;
+      border-bottom: 1px solid #444;
+    }
+    .message {
+      margin: 5px 0;
+    }
+    #input-container {
+      display: flex;
+    }
+    #messageInput {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      outline: none;
+      font-size: 16px;
+    }
+    #sendButton {
+      padding: 10px 20px;
+      border: none;
+      background-color: #7289da;
+      color: white;
+      cursor: pointer;
+    }
+    #usernameInput {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="usernamePrompt">
+    <input type="text" id="usernameInput" placeholder="Enter your nickname...">
+  </div>
+
+  <div id="chat-container" style="display: none">
+    <div id="messages"></div>
+    <div id="input-container">
+      <input type="text" id="messageInput" placeholder="Type a message...">
+      <button id="sendButton">Send</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+    import { getDatabase, ref, push, onChildAdded } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAjpfCMAntF0iA7LzbJPpbSlX3M43YokQQ",
+      authDomain: "projectman-4c2fa.firebaseapp.com",
+      projectId: "projectman-4c2fa",
+      storageBucket: "projectman-4c2fa.firebasestorage.app",
+      messagingSenderId: "517505959338",
+      appId: "1:517505959338:web:797e48e20df9e2712a97d3",
+      measurementId: "G-THKQ9NG2DN"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const messagesRef = ref(db, "messages");
+
+    const usernamePrompt = document.getElementById("usernamePrompt");
+    const usernameInput = document.getElementById("usernameInput");
+    const chatContainer = document.getElementById("chat-container");
+    const messages = document.getElementById("messages");
+    const messageInput = document.getElementById("messageInput");
+    const sendButton = document.getElementById("sendButton");
+
+    let username = "";
+
+    usernameInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter" && usernameInput.value.trim() !== "") {
+        username = usernameInput.value.trim();
+        usernamePrompt.style.display = "none";
+        chatContainer.style.display = "flex";
+      }
+    });
+
+    sendButton.addEventListener("click", () => {
+      const text = messageInput.value.trim();
+      if (text !== "") {
+        push(messagesRef, {
+          name: username,
+          text: text
+        });
+        messageInput.value = "";
+      }
+    });
+
+    onChildAdded(messagesRef, (snapshot) => {
+      const msg = snapshot.val();
+      const msgElem = document.createElement("div");
+      msgElem.className = "message";
+      msgElem.textContent = `${msg.name}: ${msg.text}`;
+      messages.appendChild(msgElem);
+      messages.scrollTop = messages.scrollHeight;
+    });
+  </script>
+</body>
+</html>
