@@ -25,6 +25,10 @@
     .message {
       margin: 5px 0;
     }
+    .system-message {
+      color: #999;
+      font-style: italic;
+    }
     #input-container {
       display: flex;
     }
@@ -64,7 +68,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-    import { getDatabase, ref, push, onChildAdded } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+    import { getDatabase, ref, push, onChildAdded, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAjpfCMAntF0iA7LzbJPpbSlX3M43YokQQ",
@@ -89,11 +93,22 @@
 
     let username = "";
 
+    function formatTime(ts) {
+      const date = new Date(ts);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
     usernameInput.addEventListener("keypress", (e) => {
       if (e.key === "Enter" && usernameInput.value.trim() !== "") {
         username = usernameInput.value.trim();
         usernamePrompt.style.display = "none";
         chatContainer.style.display = "flex";
+
+        push(messagesRef, {
+          system: true,
+          text: `${username} joined the chat.`,
+          timestamp: Date.now()
+        });
       }
     });
 
@@ -102,7 +117,8 @@
       if (text !== "") {
         push(messagesRef, {
           name: username,
-          text: text
+          text: text,
+          timestamp: Date.now()
         });
         messageInput.value = "";
       }
@@ -111,8 +127,11 @@
     onChildAdded(messagesRef, (snapshot) => {
       const msg = snapshot.val();
       const msgElem = document.createElement("div");
-      msgElem.className = "message";
-      msgElem.textContent = `${msg.name}: ${msg.text}`;
+      const time = msg.timestamp ? formatTime(msg.timestamp) : "";
+      msgElem.className = msg.system ? "message system-message" : "message";
+      msgElem.textContent = msg.system
+        ? `[${time}] ${msg.text}`
+        : `[${time}] ${msg.name}: ${msg.text}`;
       messages.appendChild(msgElem);
       messages.scrollTop = messages.scrollHeight;
     });
